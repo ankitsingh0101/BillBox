@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+requests
+pillow
+openpyxl
+pymupdf      # only needed for PDF bills
+pytest
+httpx

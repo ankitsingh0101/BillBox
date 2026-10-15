@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BillBox - GST bills, read locally</title>
+<style>
+:root{--bg:#f4f6f9;--fg:#18212f;--mut:#667085;--card:#fff;--line:#e1e5ec;--acc:#1f5fa8;--accfg:#fff;
+--ok:#e3f4e7;--okt:#1c6b34;--chk:#fff1c9;--chkt:#8a5a00;--rev:#fde1d8;--revt:#a6301a;--inf:#e1edfb;--inft:#1f5fa8}
+@media (prefers-color-scheme:dark){:root{--bg:#0f141b;--fg:#e7eaf0;--mut:#93a0b4;--card:#18202b;--line:#2b3544;--acc:#5b9bde;--accfg:#0b1320;
+--ok:#173a22;--okt:#7fd69a;--chk:#473a10;--chkt:#f0c75e;--rev:#522419;--revt:#ff9f86;--inf:#16314f;--inft:#8bbcf0}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:1320px;margin:0 auto;padding:20px 24px 40px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.logo{width:38px;height:38px;border-radius:10px;background:var(--acc);color:var(--accfg);display:grid;place-items:center;font-weight:800;font-size:20px}
+h1{margin:0;font-size:22px;line-height:1.1}.tag{color:var(--mut);font-size:13px}
+.sp{flex:1}.pill{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:99px;border:1px solid var(--line);background:var(--card);font-size:12.5px}
+.dot{width:9px;height:9px;border-radius:50%;background:#98a2b3}.dot.ok{background:#2ea44f}.dot.warn{background:#e0a100}.dot.bad{background:#d92d20}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.stat b{display:block;font-size:24px;line-height:1.2}.stat span{color:var(--mut);font-size:12.5px}
+#drop{border:2px dashed var(--line);background:var(--card);border-radius:14px;padding:26px;text-align:center;cursor:pointer;transition:.15s}
+#drop:hover,#drop.over{border-color:var(--acc);background:var(--inf)}#drop strong{font-size:15px}#drop small{display:block;color:var(--mut);margin-top:4px}
+#prog{display:none;margin-top:12px}#prog .bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden}
+#prog .bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}#prog p{margin:6px 0 0;color:var(--mut);font-size:13px}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:18px 0 10px}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:99px;padding:5px 13px;cursor:pointer;font-size:13px}
+.chip.on{background:var(--acc);color:var(--accfg);border-color:var(--acc)}
+button.btn{border:1px solid var(--acc);background:var(--acc);color:var(--accfg);border-radius:8px;padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer}
+button.btn.ghost{background:transparent;color:var(--revt);border-color:var(--line)}button.btn:disabled{opacity:.45;cursor:not-allowed}
+.wrap{overflow:auto;max-height:68vh;background:var(--card);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:separate;border-spacing:0;width:100%;min-width:1750px}
+th{position:sticky;top:0;background:var(--card);z-index:2;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);padding:10px 8px;border-bottom:1px solid var(--line)}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}
+input{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit;font:inherit}
+input:focus{outline:2px solid var(--acc);outline-offset:-1px}input.num{text-align:right;min-width:92px}input.mono{font-family:ui-monospace,Consolas,monospace;min-width:158px;font-size:13px}
+input.error{border-color:var(--revt);background:var(--rev)}input.warn{border-color:var(--chkt);background:var(--chk)}
+input[data-k=vendor_name]{min-width:175px}input[data-k=invoice_number]{min-width:125px}input[data-k=invoice_date]{min-width:115px}input[data-k=category]{min-width:150px}input[data-k=summary]{min-width:320px}
+.badge{display:inline-block;padding:2px 10px;border-radius:99px;font-weight:700;font-size:11.5px}.OK{background:var(--ok);color:var(--okt)}.CHECK{background:var(--chk);color:var(--chkt)}.REVIEW{background:var(--rev);color:var(--revt)}
+.src{display:block;color:var(--mut);font-size:12px;margin-top:4px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.notes{min-width:260px}.note{display:block;font-size:12.5px;padding:3px 8px;border-radius:6px;margin-bottom:4px}
+.note.error{background:var(--rev);color:var(--revt)}.note.warn{background:var(--chk);color:var(--chkt)}.note.info{background:var(--inf);color:var(--inft)}.note.good{background:var(--ok);color:var(--okt)}
+.x{border:0;background:transparent;color:var(--mut);font-size:18px;cursor:pointer;padding:2px 6px}.x:hover{color:var(--revt)}
+.empty{padding:48px;text-align:center;color:var(--mut)}footer{margin-top:18px;color:var(--mut);font-size:12.5px}
+</style></head><body><main>
+<header><div class="logo">B</div><div><h1>BillBox</h1><div class="tag">GST bills read on your own computer - nothing leaves this machine</div></div>
+<div class="sp"></div><span class="pill" id="health"><i class="dot"></i><span>Checking local model...</span></span></header>
+
+<section class="stats" aria-label="Summary">
+<div class="stat"><b id="sN">0</b><span>Bills loaded</span></div>
+<div class="stat"><b id="sOK">0</b><span>Ready (all checks passed)</span></div>
+<div class="stat"><b id="sAT">0</b><span>Need your attention</span></div>
+<div class="stat"><b id="sV">Rs 0</b><span>Total invoice value</span></div></section>
+
+<div id="drop" tabindex="0" role="button" aria-label="Choose bills"><strong>Drop bill photos or PDFs here</strong><small>or click to choose files - JPG, PNG, PDF</small>
+<input id="file" type="file" multiple accept="image/*,.pdf" hidden></div>
+<div id="prog" aria-live="polite"><div class="bar"><i></i></div><p></p></div>
+
+<div class="tools"><span id="chips"></span><span class="sp"></span>
+<button class="btn ghost" id="clr" disabled>Clear all data</button><button class="btn" id="exp" disabled>Download Excel</button></div>
+
+<div class="wrap"><table><thead><tr><th>Status</th><th>Vendor</th><th>Category</th><th>What it's for (AI)</th><th>Vendor GSTIN</th><th>Buyer GSTIN</th><th>Invoice no</th><th>Date</th>
+<th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th><th>Notes</th><th></th></tr></thead><tbody id="tb"></tbody></table>
+<div class="empty" id="empty">No bills yet. Drop a few above to begin.</div></div>
+<footer>Privacy: uploaded files are deleted from the server's temp folder right after reading. Results stay only in this browser tab (they survive a refresh, not closing the tab) until you press <b>Clear all data</b>. Always have a CA review before filing; this is not tax advice.</footer>
+
+<script>
+const KEY='billbox.session.v1',$=s=>document.querySelector(s);let bills=[],filter='all';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const save=()=>{try{sessionStorage.setItem(KEY,JSON.stringify(bills))}catch{}};
+try{bills=JSON.parse(sessionStorage.getItem(KEY)||'[]')}catch{bills=[]}
+const post=async(u,b)=>{const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});if(!r.ok)throw new Error('Server error '+r.status);return r};
+const inr=n=>'Rs '+(+n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
+const FIELDMAP={tax:'taxable_value',file:'vendor_name'};
+const COLS=[['vendor_name',0,''],['category',0,''],['summary',0,''],['vendor_gstin',0,'mono'],['buyer_gstin',0,'mono'],['invoice_number',0,''],['invoice_date',0,''],
+['taxable_value',1,'num'],['cgst',1,'num'],['sgst',1,'num'],['igst',1,'num'],['total',1,'num']];
+
+async function health(){const el=$('#health'),d=el.querySelector('.dot'),t=el.querySelector('span');
+ try{const h=await (await fetch('/api/health')).json();
+  if(h.ollama&&h.installed){d.className='dot ok';t.textContent='Local model ready: '+h.model}
+  else if(h.ollama){d.className='dot warn';t.textContent='Model missing - run: ollama pull '+h.model}
+  else{d.className='dot bad';t.textContent='Ollama not running - start it, then refresh'}}
+ catch{d.className='dot bad';t.textContent='App server not reachable'}}
+
+async function recheck(){bills=(await (await post('/api/check',{bills})).json()).bills;save();render()}
+
+async function addFiles(list){const files=[...list];if(!files.length)return;
+ const p=$('#prog'),bar=p.querySelector('i'),msg=p.querySelector('p');p.style.display='block';
+ for(let i=0;i<files.length;i++){
+  msg.textContent=`Reading ${i+1} of ${files.length}: ${files[i].name} (the first bill can take a minute while the model loads)`;
+  bar.style.width=(i/files.length*100)+'%';
+  try{const fd=new FormData();fd.append('files',files[i]);const r=await fetch('/api/process',{method:'POST',body:fd});
+   if(!r.ok)throw new Error('Server error '+r.status);bills.push(...(await r.json()).bills);render()}
+  catch(e){bills.push({source:files[i].name,status:'REVIEW',vendor_name:'',vendor_gstin:'',buyer_gstin:'',invoice_number:'',invoice_date:'',taxable_value:0,cgst:0,sgst:0,igst:0,total:0,flags:[{level:'error',field:'file',msg:'Could not read this file: '+e.message}]})}}
+ bar.style.width='100%';try{await recheck()}catch{}
+ msg.textContent=`Done - ${files.length} file(s) read.`;setTimeout(()=>p.style.display='none',2500)}
+
+function notesHtml(b){const f=b.flags||[];if(!f.length)return '<span class="note good">&#10003; All checks passed</span>';
+ const ic={error:'&#10005; ',warn:'! ',info:'i '};
+ return f.map(x=>`<span class="note ${x.level}">${ic[x.level]||''}${esc(x.msg)}</span>`).join('')}
+
+function render(){
+ const cnt={OK:0,CHECK:0,REVIEW:0};bills.forEach(b=>cnt[b.status]=(cnt[b.status]||0)+1);
+ $('#sN').textContent=bills.length;$('#sOK').textContent=cnt.OK;$('#sAT').textContent=cnt.CHECK+cnt.REVIEW;
+ $('#sV').textContent=inr(bills.reduce((a,b)=>a+(+b.total||0),0));
+ $('#chips').innerHTML=[['all','All',bills.length],['REVIEW','Needs review',cnt.REVIEW],['CHECK','Check',cnt.CHECK],['OK','OK',cnt.OK]]
+  .map(([k,l,n])=>`<button class="chip ${filter===k?'on':''}" data-f="${k}">${l} (${n})</button>`).join(' ');
+ $('#exp').disabled=$('#clr').disabled=!bills.length;$('#empty').style.display=bills.length?'none':'block';
+ $('#tb').innerHTML=bills.map((b,i)=>{if(filter!=='all'&&b.status!==filter)return '';
+  const sev={};(b.flags||[]).forEach(f=>{const k=FIELDMAP[f.field]||f.field;if(f.level!=='info'&&sev[k]!=='error')sev[k]=f.level});
+  const cells=COLS.map(([k,n,c])=>`<td><input class="${c} ${sev[k]||''}" data-i="${i}" data-k="${k}" data-n="${n}" value="${esc(n?(+b[k]||0).toFixed(2):b[k])}" title="${esc(b[k])}" aria-label="${k}"></td>`).join('');
+  return `<tr><td><span class="badge ${b.status}">${b.status}</span><span class="src" title="${esc(b.source)}">${esc(b.source)}</span></td>${cells}<td class="notes">${notesHtml(b)}</td><td><button class="x" data-del="${i}" title="Remove this bill">&times;</button></td></tr>`}).join('')}
+
+$('#tb').addEventListener('change',async e=>{const t=e.target;if(t.dataset.k===undefined)return;
+ bills[+t.dataset.i][t.dataset.k]=t.dataset.n==='1'?(parseFloat(t.value)||0):t.value;try{await recheck()}catch{}});
+$('#tb').addEventListener('click',async e=>{const d=e.target.dataset.del;if(d===undefined)return;bills.splice(+d,1);try{await recheck()}catch{render()}});
+$('#chips').addEventListener('click',e=>{if(e.target.dataset.f){filter=e.target.dataset.f;render()}});
+$('#clr').onclick=()=>{if(confirm('Delete all processed bills from this browser session?\nDownload the Excel first if you need it. This cannot be undone.')){bills=[];filter='all';try{sessionStorage.removeItem(KEY)}catch{}render()}};
+$('#exp').onclick=async()=>{try{const r=await post('/api/export',{bills});const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download='billbox_export.xlsx';a.click()}catch(e){alert('Export failed: '+e.message)}};
+const drop=$('#drop'),fi=$('#file');drop.onclick=()=>fi.click();drop.onkeydown=e=>{if(e.key==='Enter'||e.key===' ')fi.click()};
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};drop.ondragleave=()=>drop.classList.remove('over');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files)};fi.onchange=()=>{addFiles(fi.files);fi.value=''};
+render();health();
+</script></main></body></html>
