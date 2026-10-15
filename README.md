@@ -349,4 +349,4 @@ BILLBOX_MODEL=qwen2.5vl:7b uvicorn app:app --reload             # macOS / Linux
 
 ## 19. License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](LICENSE).
