@@ -63,7 +63,7 @@ flowchart LR
     B --> C["Server saves it to a temp folder"]
     C --> D["Prepare image<br/>fix rotation, resize, split PDF pages"]
     D --> E["Local vision model (Ollama)<br/>reads fields as structured JSON"]
-    E --> F{"Vendor GSTIN<br/>missing?"}
+    E --> F{"Vendor GSTIN<br/>missing or invalid?"}
     F -- yes --> G["Second read: list all GSTINs,<br/>pick the seller by label"]
     F -- no --> H
     G --> H["Clean and repair<br/>dates, numbers, look-alike characters"]
@@ -79,7 +79,7 @@ flowchart LR
 1. **Upload.** You drop images or PDFs on the page. Files are sent to the server one at a time so you see live progress.
 2. **Prepare.** Photos are rotated using their EXIF data and shrunk to at most 1600 px so a laptop can handle them. PDFs are rendered to images, one per page, and each page is treated as its own bill.
 3. **Read.** The image goes to a local open-weight vision model through Ollama. The model must answer in a fixed JSON shape (a schema), at temperature 0 for repeatable output.
-4. **Second read (only if needed).** Bills often show two unlabelled-looking GSTINs. If the vendor's is missing, BillBox asks the model a narrower question: "list every GSTIN with its label". Code then picks the seller's by label, rules out the buyer's, and prefers one that passes the checksum.
+4. **Second read (only if needed).** Bills often show two GSTINs, and a small model sometimes drops the seller's or reads it wrongly. If the vendor GSTIN is missing or fails validation, BillBox asks the model a narrower question: "list every GSTIN with its label". Code then picks the seller's by label, rules out the buyer's, and prefers one that passes the checksum. The re-read replaces the original only if it is valid (or the original was empty), so one bad value is never swapped for another.
 5. **Clean and repair.** Dates are converted to `YYYY-MM-DD` (day-first, as Indian bills are written), numbers are normalised, and look-alike character mistakes in GSTINs are repaired only when the checksum proves the fix.
 6. **Validate.** Every bill goes through the checks in [section 6](#6-the-checks-one-by-one) and gets a status.
 7. **Review.** In the browser you see every bill with problem cells highlighted. Edit any value and the whole list is re-checked immediately, including cross-file duplicate detection.
@@ -107,7 +107,7 @@ Each bill is reduced to the fields below. "Read by" says who produces the value;
 | Field | What it is | Example | Read by | Checked by |
 |---|---|---|---|---|
 | `vendor_name` | Seller's business name | `VERMA PRINTING PRESS` | AI | Human review (not validated) |
-| `vendor_gstin` | Seller's GSTIN | `27GOBOY6505B4ZU` | AI, second read if empty, auto-repair | Format and checksum |
+| `vendor_gstin` | Seller's GSTIN | `27GOBOY6505B4ZU` | AI, second read if empty or invalid, auto-repair | Format and checksum |
 | `buyer_gstin` | Customer's GSTIN (blank for unregistered buyers) | `23IDQBN3050N7ZO` | AI, auto-repair | Format, checksum, state vs tax type |
 | `invoice_number` | Bill number | `INV/554/26` | AI | Missing is a warning; used for duplicate detection |
 | `invoice_date` | Bill date, stored as ISO | `2026-06-14` | AI, then parsed by code | Must parse as a real date |
@@ -137,7 +137,7 @@ Added by BillBox itself:
 | `CHECK` | Has a warning, such as a missing vendor GSTIN or an unusual tax rate | Glance at it once |
 | `REVIEW` | Has an error, such as a wrong total or an invalid GSTIN | Fix it before filing |
 
-Blue **info** notes (for example "auto-corrected from ... to ...") record what the code repaired. They never change the status and exist so every automatic change is visible.
+Blue **info** notes (for example "Vendor GSTIN auto-corrected ... checksum confirms the fix") record what the code repaired. They never change the status and exist so every automatic change is visible.
 
 ## 6. The checks, one by one
 
@@ -156,31 +156,37 @@ Blue **info** notes (for example "auto-corrected from ... to ...") record what t
 | Same-state parties use CGST+SGST; different-state parties use IGST | Tax type must match the states in the two GSTINs | Warning |
 | Duplicate bill (same vendor and invoice number, or same vendor, date and total) | Prevents claiming the same bill twice, even across separate uploads | Error |
 
-**GSTIN auto-repair.** Vision models confuse look-alikes such as `0`/`O`, `1`/`I`, `8`/`B`, `5`/`S`, `2`/`Z` and `6`/`G`. If a GSTIN fails its checksum, BillBox tries swapping exactly one such character. It accepts the result only if **exactly one** swap makes the checksum pass. If none or several work, it leaves the value alone and flags it. The code can prove a repair, but it never guesses.
+**GSTIN auto-repair.** Vision models confuse look-alikes such as `0`/`O`, `1`/`I`, `8`/`B`, `5`/`S`, `2`/`Z` and `6`/`G`. If a GSTIN fails its checksum, BillBox tries swapping exactly one such character. It accepts the result only if **exactly one** swap makes the checksum pass. If none or several work, it leaves the value alone and flags it. The code can prove a repair, but it never guesses. Bigger errors, such as an extra or missing character, are not repaired automatically; they are flagged `REVIEW` so a human fixes them.
 
 ## 7. Project structure: what every file is for
 
 ```
 BillBox/
-├── app.py                      Web server and API
+├── app.py                           Web server and API
 ├── billbox/
-│   ├── __init__.py             Marks the folder as a Python package (empty)
-│   ├── extractor.py            Talks to the local AI model
-│   ├── validators.py           The trust layer: all checks and the GSTIN repair
-│   ├── pipeline.py             Connects the steps and assigns statuses
-│   └── export.py               Builds the Excel file
+│   ├── __init__.py                  Marks the folder as a Python package (empty)
+│   ├── extractor.py                 Talks to the local AI model
+│   ├── validators.py                The trust layer: all checks and the GSTIN repair
+│   ├── pipeline.py                  Connects the steps and assigns statuses
+│   └── export.py                    Builds the Excel file
 ├── static/
-│   └── index.html              The whole web interface (HTML, CSS, JavaScript)
-├── gen_synthetic.py            Makes labelled fake bills for testing
-├── eval.py                     Measures model accuracy on those bills
-├── debug_one.py                Shows exactly what the model says for one bill
+│   └── index.html                   The whole web interface (HTML, CSS, JavaScript)
+├── gen_synthetic.py                 Makes labelled fake bills for testing
+├── eval.py                          Measures model accuracy on those bills
+├── debug_one.py                     Shows exactly what the model says for one bill
 ├── tests/
-│   ├── test_validators.py      Unit tests for the checks
-│   └── test_pipeline_export.py Tests for pipeline, Excel export and the API
-├── data/                       Generated test bills and sample output (git-ignored)
-├── requirements.txt            Python dependencies
-├── .gitignore                  Keeps caches, generated data and spreadsheets out of Git
-└── README.md                   This file
+│   ├── test_validators.py           Unit tests for the checks
+│   └── test_pipeline_export.py      Tests for pipeline, Excel export and the API
+├── data/                            Generated test bills and sample output (git-ignored)
+├── Dockerfile                       Packages the web app into a container
+├── docker-compose.yml               Starts BillBox plus its own Ollama
+├── docker-compose.host-ollama.yml   Starts BillBox and reuses the Ollama on your PC
+├── .dockerignore                    Keeps venv, .git and test data out of the container
+├── DOCKER.md                        Plain-language Docker guide
+├── requirements.txt                 Python dependencies
+├── .gitignore                       Keeps caches, generated data and spreadsheets out of Git
+├── LICENSE                          MIT license
+└── README.md                        This file
 ```
 
 | File | Purpose in detail |
@@ -195,6 +201,7 @@ BillBox/
 | `eval.py` | Runs a model over the fake bills and prints per-field accuracy, fully correct bills, and how many wrong readings the validators caught. |
 | `debug_one.py` | Prints the model's raw answers for one bill. First stop when a field comes back wrong. |
 | `tests/` | 24 automated tests with the model mocked, so they run in seconds with no GPU. |
+| `Dockerfile`, `docker-compose*.yml`, `.dockerignore` | Optional Docker packaging. See [DOCKER.md](DOCKER.md). |
 
 ## 8. The Excel output
 
@@ -214,6 +221,7 @@ BillBox/
 - The server stores nothing. Results live only in the browser tab (session storage): they survive a refresh but vanish when the tab closes.
 - **Clear all data** wipes the results immediately. Each row also has a button to remove just that bill.
 - Ollama keeps the model in memory for a few minutes after use, then unloads it.
+- With Docker, the port is bound to `127.0.0.1`, so only the same computer can open the page.
 - BillBox is a single-user local tool with no login. Run it on `localhost` only; do not expose it to a network.
 
 ## 10. Install and run
@@ -246,6 +254,23 @@ python gen_synthetic.py --n 30 --out data/synthetic
 ```
 
 then drag images from `data/synthetic/` onto the page.
+
+### Run with Docker (optional)
+
+If you have [Docker Desktop](https://www.docker.com/products/docker-desktop), you can skip the Python setup. If you already have Ollama and `gemma3:4b` installed, reuse them:
+
+```bash
+docker compose -f docker-compose.host-ollama.yml up -d --build
+```
+
+Or run everything, including Ollama, inside Docker:
+
+```bash
+docker compose up -d --build
+docker compose exec ollama ollama pull gemma3:4b
+```
+
+Then open <http://localhost:8000>. See [DOCKER.md](DOCKER.md) for a plain-language explanation, speed notes and troubleshooting.
 
 ## 11. Measuring accuracy
 
@@ -302,6 +327,7 @@ BILLBOX_MODEL=qwen2.5vl:7b uvicorn app:app --reload             # macOS / Linux
 | Excel | **openpyxl** | Formatting plus live formulas |
 | HTTP client | **requests** | Talks to Ollama |
 | Testing | **pytest, httpx** | Fast tests; httpx lets tests call the app without a real server |
+| Packaging | **Docker (optional)** | One-command setup without installing Python |
 
 ## 15. API reference
 
@@ -321,11 +347,13 @@ BILLBOX_MODEL=qwen2.5vl:7b uvicorn app:app --reload             # macOS / Linux
 | Amber pill: "Model missing" | Run `ollama pull gemma3:4b` (or your chosen model) |
 | First bill takes 1-3 minutes | The model is loading into memory. Later bills are faster. CPU-only machines are slower |
 | Row shows "Extraction failed" | Read the message. Usually Ollama is off, the model name is wrong, or the request timed out |
-| Vendor GSTIN blank | Run `python debug_one.py <image>` to see what the model returns, or try a larger model |
+| Vendor GSTIN blank or marked invalid | Run `python debug_one.py <image>` to see what the model returns, correct it by hand in the table, or try a larger model |
 | `uvicorn` is not recognized | The virtual environment is not active. Re-run the activate command |
+| `Fatal error in launcher` after moving the project folder | A virtual environment cannot be moved. Delete `venv`, run `python -m venv venv`, activate it, and `pip install -r requirements.txt` |
 | `ModuleNotFoundError: billbox` | Run commands from the project root, the folder that contains `app.py` |
 | PDF error mentioning `fitz` | `pip install pymupdf` |
 | Old page after updating code | Hard-refresh with `Ctrl + Shift + R` |
+| Docker: red pill with `docker-compose.host-ollama.yml` | Ollama is refusing connections from Docker. Run `setx OLLAMA_HOST 0.0.0.0`, then restart Ollama |
 
 ## 17. Honest limitations
 
