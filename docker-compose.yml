@@ -1,0 +1,17 @@
+# Runs BillBox + its own Ollama together:  docker compose up -d
+services:
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama:/root/.ollama          # the downloaded model is kept here between restarts
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"         # reachable only from this computer
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      BILLBOX_MODEL: gemma3:4b
+    depends_on:
+      - ollama
+volumes:
+  ollama:

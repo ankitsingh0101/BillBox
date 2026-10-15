@@ -1,0 +1,12 @@
+# Runs ONLY BillBox and reuses the Ollama you already installed on Windows:
+#   docker compose -f docker-compose.host-ollama.yml up -d --build
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      BILLBOX_MODEL: gemma3:4b
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
